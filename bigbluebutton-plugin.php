@@ -1557,93 +1557,33 @@ function bbb_admin_panel_list_active_meetings() {
     }
     else
     { /// The meeting exists in the bigbluebutton server
-
-        $out = "<h2>List of Active Meeting Rooms in BBB Server</h2>";
-
-        $out .= '
-        </tbody>
-        <div>
-        <table id="activity_monitor" class="display" cellspacing="0" width="100%">
-            <thead>
+       $out = "<h2>List of Active Meeting Rooms in BBB Server</h2>";
+        $out.= '</tbody>
+                     <div>
+                        <table class="display" cellspacing="0" width="100%">
+                        <thead>
+                        <tr>
+                                <th>ID</th><th>Name</th><th>Voice Bridge</th>
+                                <th>Creation</th><th>Participants</th>
+                        </tr>
+                        </thead>
+                        <tbody>';
+        $Room=simplexml_load_string($info);
+        foreach ($Room->meeting as $stanza){
+                $out.='
                 <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Voice Bridge</th>
-                    <th>Creation</th>
-                    <th>Participants</th>
-                </tr>
-            </thead>
-            <tfoot>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Voice Bridge</th>
-                    <th>Creation</th>
-                    <th>Participants</th>
-                </tr>
-            </tfoot>
-        </table>
-        <script>
+                    <td>'.(string) $stanza->meetingID.'</td>
+                    <td>'.(string) $stanza->meetingName.'</td>
+                    <td>'.(string) $stanza->voiceBridge.'</td>
+                    <td>'.(string) $stanza->createDate.'</td>
+                    <td>'.(string) $stanza->participantCount.'</td>                  
+                </tr>';
+        }
 
-        jQuery(document).ready(function() {
-          var table_activity_monitor = jQuery("#activity_monitor").on( "error.dt", function ( e, settings, techNote, message ) {
-              console.log( "An error has been reported by DataTables: ", message );
-            } ).
-            DataTable( {
-                "autofill": true,
-                "dom": "lBfrtip",
-                "buttons": [
-                    "copyHtml5",
-                    "excelHtml5",
-                    "csvHtml5",
-                    "pdfHtml5",
-                    {
-                        text: "Reload table",
-                        action: function () {
-                            table_activity_monitor.ajax.reload(null, false);
-                        }
-                    }
-                ],
-                fixedColumns:   {
-                    leftColumns: 1
-                },
-                responsive: true,
-                rowReorder: true,
-                "scrollX": true,
-                "lengthMenu": [ 10, 25, 50, 100 ],
-                "deferRender": true,
-                "ajax": {
-                    "dataType": "json",
-                    "url": wp_ajax_tets_vars.ajaxurl,
-                    "cache": "false",
-                    "dataSrc": "meeting",
-                    "data": function ( d ) {
-                        return jQuery.extend( {}, d, {
-                            "action": "bbbadminpanel_action_get_active_meetings"
-                        } );
-                    }
-                },
-                "columns": [
-                    { "data": "meetingID" },
-                    { "data": "meetingName" },
-                    { "data": "voiceBridge" },
-                    { "data": "createDate" },
-                    { "data": "participantCount" }
-                ],
-                "columnDefs": [
-                    { targets: "_all", "defaultContent": "<i>Not set</i>", }
-                ]
-          } );
+        $out.='</tbody>
+               </table>';
+     }
 
-          // refresh table each 30 seconds
-          setInterval( function () {
-            table_activity_monitor.ajax.reload( null, false ); // user paging is not reset on reload
-        }, 30000 );
-
-        });
-
-        </script>
-        </div><hr />';
     }
 
     return $out;

@@ -3,7 +3,7 @@
 Plugin Name: BBB Administration Panel
 Plugin URI: https://github.com/albertosgz/Wordpress_BigBlueButton_plugin
 Description: Administraton panel to manage a Bigbluebutton server, its rooms and recordigns. Integrates login forms as widgets.
-Version: 1.1.8
+Version: 1.1.13
 Author: Alberto Sanchez Gonzalez
 Author URI: https://github.com/albertosgz
 License: GPLv2 or later
@@ -345,8 +345,9 @@ function bbb_admin_panel_active_meetings_shortcode($args) {
 function bbb_admin_panel_sidebar($args) {
     extract($args);
 
+    $name = get_option('bbb_admin_panel_widget_title');
     echo $before_widget;
-    echo $before_title.'BigBlueButton'.$after_title;
+    echo $before_title.$name.$after_title;
     echo bbb_admin_panel_form($args, BBB_ADMINISTRATION_PANEL_FORM_IN_WIDGET);
     echo $after_widget;
 }
@@ -748,6 +749,7 @@ function bbb_admin_panel_general_settings() {
         //Reads their posted value
         $url_val = filter_input(INPUT_POST, 'bbb_admin_panel_url', FILTER_SANITIZE_STRING);
         $salt_val = filter_input(INPUT_POST, 'bbb_admin_panel_salt', FILTER_SANITIZE_STRING);
+        $newWidgetTitle = filter_input(INPUT_POST, 'bbb_admin_panel_widget_title', FILTER_SANITIZE_STRING);
 
         //
         if(strripos($url_val, "/bigbluebutton/") == false) {
@@ -762,6 +764,7 @@ function bbb_admin_panel_general_settings() {
         // Save the posted value in the database
         update_option('bbb_admin_panel_url', $url_val );
         update_option('bbb_admin_panel_salt', $salt_val );
+        update_option('bbb_admin_panel_widget_title', $newWidgetTitle);
 
         // Put an settings updated message on the screen
         $out .= '<div class="updated"><p><strong>Settings saved.</strong></p></div>';
@@ -773,11 +776,15 @@ function bbb_admin_panel_general_settings() {
     }
     //Form to update the url of the bigbluebutton server, and it`s salt
 
+    $widgetTitle = get_option('bbb_admin_panel_widget_title');
+
     $out .= '
     <form name="form1" method="post" action="">
     <p>BigBlueButton URL:<input type="text" name="bbb_admin_panel_url" value="'.$url_val.'" size="60"><br> eg. \'http://test-install.blindsidenetworks.com/bigbluebutton/\'
     </p>
     <p>BigBlueButton shared secret:<input type="text" name="bbb_admin_panel_salt" value="'.$salt_val.'" size="40"><br> It can be found in /var/lib/tomcat7/webapps/bigbluebutton/WEB-INF/classes/bigbluebutton.properties.<br>eg. \'8cd8ef52e8e101574e400365b55e11a6\'.
+    </p>
+    <p>Widget title:<input type="text" name="bbb_admin_panel_widget_title" value="'.$widgetTitle.'" size="25"><br> eg. BigBlueButton.
     </p>
     <p class="submit">
     <input type="submit" name="SubmitSettings" class="button-primary" value="Save Settings" />
@@ -986,7 +993,7 @@ function bbb_admin_panel_create_meetings() {
     <p>Meeting Room Name: <input type="text" name="meetingName" value="" size="20"></p>
     <p>Attendee Password: <input type="text" name="attendeePW" value="" size="20"></p>
     <p>Moderator Password: <input type="text" name="moderatorPW" value="" size="20"></p>
-    <p>Voicebridge: <input type="number" name="voiceBridge" value="" size="5"> (recommented 5 digits)</p>
+    <p>Voicebridge: <input type="number" name="voiceBridge" value="" min="10000" size="5"> (recommented 5 digits)</p>
     <p>Wait for moderator to start meeting: <input type="checkbox" name="waitForModerator" value="True" /></p>
     <p>Recorded meeting: <input type="checkbox" name="recorded" value="True" /></p>
     <p>Welcome message: <input type="text" name="welcome" value="" size="100"> (leave blank to default one)</p>
@@ -1508,14 +1515,22 @@ function bbbadminpanel_action_get_active_meetings() {
     $url_val = get_option('bbb_admin_panel_url');
     $salt_val = get_option('bbb_admin_panel_salt');
     $info = BigBlueButtonAPI::getMeetings( $url_val, $salt_val);
+    $meetings = [];
     if ($info) {
-        $meetings = simplexml_load_string ($info);
-        echo json_encode($meetings);
-    } else {
-        echo json_encode([
-            'meeting' => []
-        ]);
+        $xmlMeetings = simplexml_load_string ($info);
+        foreach ($xmlMeetings as $meeting) {
+            $meetings[] = [
+                "meetingID"  => (string) $meeting->meetingID,
+                "meetingName"  => (string) $meeting->meetingName,
+                "voiceBridge"  => (string) $meeting->voiceBridge,
+                "createDate"  => (string) $meeting->createDate,
+                "participantCount" => (string) $meeting->participantCount,
+            ];
+        }
     }
+    echo json_encode([
+        'meeting' => $meetings
+    ]);
 
 	wp_die(); // this is required to terminate immediately and return a proper response
 }
@@ -1558,32 +1573,93 @@ function bbb_admin_panel_list_active_meetings() {
     else
     { /// The meeting exists in the bigbluebutton server
        $out = "<h2>List of Active Meeting Rooms in BBB Server</h2>";
-        $out.= '</tbody>
-                     <div>
-                        <table class="display" cellspacing="0" width="100%">
-                        <thead>
-                        <tr>
-                                <th>ID</th><th>Name</th><th>Voice Bridge</th>
-                                <th>Creation</th><th>Participants</th>
-                        </tr>
-                        </thead>
-                        <tbody>';
-        $Room=simplexml_load_string($info);
-        foreach ($Room->meeting as $stanza){
-                $out.='
+        $out .= '
+        </tbody>
+        <div>
+        <table id="activity_monitor" class="display" cellspacing="0" width="100%">
+            <thead>
                 <tr>
-                    <td>'.(string) $stanza->meetingID.'</td>
-                    <td>'.(string) $stanza->meetingName.'</td>
-                    <td>'.(string) $stanza->voiceBridge.'</td>
-                    <td>'.(string) $stanza->createDate.'</td>
-                    <td>'.(string) $stanza->participantCount.'</td>                  
-                </tr>';
-        }
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Voice Bridge</th>
+                    <th>Creation</th>
+                    <th>Participants</th>
+                </tr>
+            </thead>
+            <tfoot>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Voice Bridge</th>
+                    <th>Creation</th>
+                    <th>Participants</th>
+                </tr>
+            </tfoot>
+        </table>
+        <script>
 
-        $out.='</tbody>
-               </table>';
-     }
+        jQuery(document).ready(function() {
+          var table_activity_monitor = jQuery("#activity_monitor").on( "error.dt", function ( e, settings, techNote, message ) {
+              console.log( "An error has been reported by DataTables: ", message );
+            } ).
+            DataTable( {
+                "autofill": true,
+                "dom": "lBfrtip",
+                "buttons": [
+                    "copyHtml5",
+                    "excelHtml5",
+                    "csvHtml5",
+                    "pdfHtml5",
+                    {
+                        text: "Reload table",
+                        action: function () {
+                            table_activity_monitor.ajax.reload(null, false);
+                        }
+                    }
+                ],
+                fixedColumns:   {
+                    leftColumns: 1
+                },
+                responsive: true,
+                rowReorder: true,
+                "scrollX": true,
+                "lengthMenu": [ 10, 25, 50, 100 ],
+                "deferRender": true,
+                "ajax": {
+                    "dataType": "json",
+                    "url": wp_ajax_tets_vars.ajaxurl,
+                    "cache": "false",
+                    "dataSrc": "meeting",
+                    "data": function ( d ) {
+                        return jQuery.extend( {}, d, {
+                            "action": "bbbadminpanel_action_get_active_meetings"
+                        } );
+                    }
+                },
+                "columns": [
+                    { "data": "meetingID" },
+                    { "data": "meetingName" },
+                    { "data": "voiceBridge" },
+                    { "data": "createDate" },
+                    { "data": "participantCount" }
+                ],
+                "columnDefs": [
+                    { targets: "_all", "defaultContent": "<i>Not set</i>", }
+                ],
+                "language": {
+                    "emptyTable": "No active meetings in BBB server currently",
+                }
+          } );
 
+          // refresh table each 30 seconds
+          setInterval( function () {
+            table_activity_monitor.ajax.reload( null, false ); // user paging is not reset on reload
+        }, 30000 );
+
+        });
+
+        </script>
+        </div><hr />';
     }
 
     return $out;
